@@ -56,3 +56,11 @@ docs/_build/
 
 # PyBuilder
 target/
+
+
+**/results/
+**/output/
+**/*.png
+**/temp_results/
+**/temp/
+**/*.gldb
