@@ -25,7 +25,7 @@
 # 
 # Currently a weak material is added to the top of the lower plate to decouple the plates. For simplicity, in this notebook, there is no functionality for updating the distribution of materials (i.e. creating new crust). An example of one way you could add this functionality can be found here: https://github.com/dansand/materialTransformations
 # 
-# ### solver
+# ### Solver
 # 
 # We have found the penalty method works well for this problem. This is the default setting. (Unfortunately, it doesn't scale well to 3D.)
 # 
@@ -65,7 +65,7 @@
 #     
 # ```
 
-# In[11]:
+# In[58]:
 
 import os
 import sys
@@ -78,7 +78,7 @@ else:
     pass #put your non-docker path here
 
 
-# In[12]:
+# In[59]:
 
 import numpy as np
 import underworld as uw
@@ -101,7 +101,7 @@ from unsupported_dan.utilities.misc import *
 
 # ## Setup output directories
 
-# In[13]:
+# In[60]:
 
 ###########
 #Standard output directory setup
@@ -114,7 +114,8 @@ Model = "T"
 #Model number identifier demarker:
 ModNum = 1
 
-#Any isolated letter / integer command line args are interpreted as Model/ModelNum
+#Any isolated letter / integer command line args are interpreted as Model/ModelNum and read in here
+#We use this for doing parameter sweeps
 
 if len(sys.argv) == 1:
     ModNum = ModNum 
@@ -122,7 +123,7 @@ elif sys.argv[1] == '-f': #
     ModNum = ModNum 
 else:
     for farg in sys.argv[1:]:
-        if not '=' in farg: #then Assume it's a not a paramter argument
+        if not '=' in farg: #then assume it's a not a parameter argument
             try:
                 ModNum = int(farg) #try to convert everingthing to a float, else remains string
             except ValueError:
@@ -159,7 +160,7 @@ uw.barrier() #Barrier here so no procs run the check in the next cell too early
 
 # ## Checkpointing
 
-# In[14]:
+# In[61]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -194,7 +195,7 @@ cp = checkpoint(outputPath + 'checkpoint/')
 # 
 # Command line arguments can only be provided to the `dp` and `md` dictionaries. The logic is that the scaling process (non-dimesionalisation) should basically be static, and simply provides a mapping between physical units and model units.
 
-# In[15]:
+# In[62]:
 
 dp = edict({})
 #Main physical paramters
@@ -266,7 +267,7 @@ md.thermal = True                       #thermal system or compositional
 md.swarmInitialFac = 0.6                #initial swarm layout will be int(md.ppc*md.swarmInitialFac), popControl will densify later
 md.compBuoyancy = False
 md.nltol = 0.01
-md.maxSteps = 20000
+md.maxSteps = 1000
 md.checkpointEvery = 50
 md.swarmUpdate = 10
 md.penaltyMethod = True
@@ -275,20 +276,15 @@ md.spuniform = False
 md.opfixed = False
 md.spfixed = False
 md.buoyancyFac = 1.0
-#The following are time-based actions
-md.filesMy = 1.0e6 #dimensional time interval to write files
-md.diffuseInitial = 5e6 # years to run initial diffusion for. Or set to zero
-#some temporary flags
-md.specialCaseU = 0 #md.specialCaseU=0, byerlee down to bdt
-md.specialCaseL = 0 #md.specialCaseL=0, byerlee down to decoupling
-md.deepCohesionFac = 1.0
-md.deepFcFac = 0.0
+#time-based actions
+md.filesFreqYears = 1.0e6 #dimensional time in years
+
 
 
 uw.barrier()
 
 
-# In[16]:
+# In[63]:
 
 ##Parse any command-line args
 
@@ -302,7 +298,7 @@ easy_args(sysArgs, md)
 uw.barrier()
 
 
-# In[17]:
+# In[64]:
 
 sf = edict({})
 
@@ -366,7 +362,7 @@ ndp.maxDepth = dp.maxDepth/sf.lengthScale
 ndp.radiusOfCurv = dp.radiusOfCurv/sf.lengthScale
 
 
-# In[18]:
+# In[65]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -396,7 +392,7 @@ cp.addDict(md, 'md')
 
 # ## Build Mesh and FE variables
 
-# In[19]:
+# In[66]:
 
 #Domain and Mesh paramters
 yres = int(md.res)
@@ -425,7 +421,7 @@ viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
     
 
 
-# In[20]:
+# In[67]:
 
 #*************CHECKPOINT-BLOCK**************#
 cp.addObject(velocityField,'velocityField')
@@ -438,12 +434,12 @@ if md.thermal:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[21]:
+# In[68]:
 
 #print(cp.objDict.keys())
 
 
-# In[22]:
+# In[69]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -457,7 +453,7 @@ if cp.restart:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[23]:
+# In[70]:
 
 #miscellaneous Uw functions functions
 
@@ -481,7 +477,7 @@ def inCircleFnGenerator(centre, radius):
 
 # ## Boundary Conditions
 
-# In[24]:
+# In[71]:
 
 #Stokes BCs
 
@@ -495,7 +491,7 @@ freeslipBC = uw.conditions.DirichletCondition( variable      = velocityField,
                                                indexSetsPerDof = ( iWalls, jWalls) )
 
 
-# In[25]:
+# In[72]:
 
 #Energy BCs
 
@@ -506,7 +502,7 @@ if md.thermal:
 
 # ## Swarm
 
-# In[26]:
+# In[73]:
 
 #Materials
 mantleID = 0
@@ -517,7 +513,7 @@ airID = 2      #in case we use sticky air
 material_list = [mantleID, crustID, airID]
 
 
-# In[27]:
+# In[74]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -546,7 +542,7 @@ else:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[28]:
+# In[75]:
 
 #These variables don;t need checkpointing. They can / should be rebuilt
 
@@ -557,7 +553,7 @@ signedDistanceVariable = swarm.add_variable( dataType="double", count=1 )
 signedDistanceVariable.data[:] = 0.0
 
 
-# In[29]:
+# In[76]:
 
 
 #Pass this to Figures to see full extent
@@ -566,7 +562,7 @@ bBox=((mesh.minCoord[0], mesh.minCoord[1]),(mesh.maxCoord[0], mesh.maxCoord[1]))
 
 # ## Initial Conditions
 
-# In[30]:
+# In[77]:
 
 #plate depth
 
@@ -602,12 +598,12 @@ proxyageFn = fn.branching.conditional([(xFn <= ndp.subZoneLoc, spAge), #idea is 
 
 # ### slab top
 
-# In[31]:
+# In[78]:
 
 help(slab_top)
 
 
-# In[32]:
+# In[79]:
 
 #Create some slab gradient functions to use with slab_top()
 
@@ -632,7 +628,7 @@ def polyGradientFn(S):
         return -1*(S/ndp.radiusOfCurv)**2
 
 
-# In[33]:
+# In[80]:
 
 ds = 5e3/sf.lengthScale
 normal = [1.,0.]
@@ -644,18 +640,18 @@ data = slab_top([ndp.subZoneLoc, 1.0], normal, polyGradientFn, ds, ndp.maxDepth,
 #data = slab_top([ndp.subZoneLoc, 1.0], normal, circGradientFn, ds, ndp.maxDepth, mesh)
 
 
-# In[34]:
+# In[81]:
 
 slabxs = data[:,0]
 slabys = data[:,1]
 
 
-# In[35]:
+# In[82]:
 
 slabLine = markerLine2D(mesh, velocityField, slabxs, slabys, thicknessAtTrench, 1.)
 
 
-# In[36]:
+# In[83]:
 
 #Assign the signed distance for the slab - in this case we only want the portion where the signed distance is positive
 sd, pts = slabLine.compute_signed_distance(swarm.particleCoordinates.data, distance=2.*thicknessAtTrench)
@@ -667,7 +663,7 @@ signedDistanceVariable.data[np.logical_and(sd>0, sd<=slabLine.thickness)] = sd[n
 #We'll cull distances greater than thicknessAtTrench with a numpy boolean slice - this helps things work parallel
 
 
-# In[37]:
+# In[84]:
 
 slabXConds = operator.and_(xFn > slabxs.min(), xFn < slabxs.max())
 slabYConds = depthFn < 1. - slabys.min()
@@ -679,7 +675,7 @@ slabRegion =  fn.branching.conditional([(operator.and_(slabXConds,slabYConds), T
 #slabCirc = inCircleFnGenerator((ndp.subZoneLoc, 1.0 - ndp.maxDepth), ndp.maxDepth)
 
 
-# In[38]:
+# In[85]:
 
 bufferlength = 1e3/sf.lengthScale
 
@@ -710,13 +706,13 @@ if not cp.restart:
 # 
 # In this notebook, the markerLine helps us set up the initial distribution of weak material. We take the points that desribe the top of the slab, and we add extra particles along the top of the lower plate (so that there is weak material covering the entirety of the lower plate and slab)
 
-# In[39]:
+# In[86]:
 
 morexs = np.arange(mesh.minCoord[0] + 100e3/sf.lengthScale, ndp.subZoneLoc, ds)[:-1]
 moreys = mesh.maxCoord[1]*np.ones(morexs.shape)
 
 
-# In[40]:
+# In[87]:
 
 #Build marker: copy the slab line, then move using the normal vector (director)
 
@@ -732,7 +728,7 @@ marker.rebuild()
 marker.swarm.update_particle_owners()
 
 
-# In[41]:
+# In[88]:
 
 #inform the mesh of the marker
 
@@ -749,7 +745,7 @@ if not cp.restart:
 # ## Interpolate to temperature field
 # 
 
-# In[42]:
+# In[89]:
 
 def swarmToTemp():
 
@@ -779,7 +775,7 @@ def swarmToTemp():
     temperatureField.data[tWalls.data] = 0.
 
 
-# In[43]:
+# In[90]:
 
 #map proxy temp (swarm var) to mesh variable
 
@@ -789,7 +785,7 @@ if not cp.restart:
 
 # ## choose temp field to use
 
-# In[44]:
+# In[91]:
 
 if md.thermal:
     temperatureFn = temperatureField
@@ -799,14 +795,14 @@ else:
 
 # ## adiabatic temp correction
 
-# In[45]:
+# In[92]:
 
 #Adiabatic correction: this is added to the arrhenius laws to simulate the adiabatic component
 adiabaticCorrectFn =  ndp.potentialTemp*fn.math.exp(ndp.dissipation*depthFn) - ndp.potentialTemp
 
 
 
-# In[46]:
+# In[93]:
 
 #figTemp= glucifer.Figure(quality=3, boundingBox= bBox)
 #figTemp.append( glucifer.objects.Points(swarm, temperatureFn + adiabaticCorrectFn, pointSize=1))
@@ -816,7 +812,7 @@ adiabaticCorrectFn =  ndp.potentialTemp*fn.math.exp(ndp.dissipation*depthFn) - n
 
 # ## Rheology
 
-# In[47]:
+# In[94]:
 
 
 symStrainrate = fn.tensor.symmetric( 
@@ -834,7 +830,7 @@ def safe_visc(func, viscmin=ndp.viscosityMin, viscmax=ndp.viscosityMax):
 
 
 
-# In[48]:
+# In[95]:
 
 ##Diffusion Creep
 diffusionUM = (1./ndp.diffusionPreExp)*            fn.math.exp( ((ndp.diffusionEnergy + (depthFn*ndp.diffusionVolume))/((temperatureFn+ adiabaticCorrectFn + ndp.surfaceTemp))))
@@ -876,7 +872,7 @@ mantleViscosityFn = safe_visc(fn.misc.min(diffusion, yielding), viscmin=ndp.visc
 crustViscosityFn = safe_visc(crustyielding, viscmin=ndp.viscosityMinCrust, viscmax=viscmaxCrustFn)
 
 
-# In[49]:
+# In[96]:
 
 viscosityMapFn = fn.branching.map( fn_key = materialVariable,
                          mapping = {0:mantleViscosityFn,
@@ -885,7 +881,7 @@ viscosityMapFn = fn.branching.map( fn_key = materialVariable,
 
 # ## Buoyancy
 
-# In[50]:
+# In[97]:
 
 #Thermal Buoyancy
 
@@ -898,7 +894,7 @@ thermalBuoyancyFn *=z_hat
 
 # ## Any other functions we'll need
 
-# In[51]:
+# In[98]:
 
 ###################
 #Create integral, max/min templates 
@@ -913,12 +909,12 @@ def surfint(Fn = 1., rFn=globRestFn, surfaceIndexSet=mesh.specialSets["MaxJ_Vert
 
 # ## Stokes system and solver
 
-# In[52]:
+# In[99]:
 
 print('got to Stokes')
 
 
-# In[53]:
+# In[100]:
 
 stokesPIC = uw.systems.Stokes( velocityField  = velocityField, 
                                    pressureField  = pressureField,
@@ -928,7 +924,7 @@ stokesPIC = uw.systems.Stokes( velocityField  = velocityField,
 
 
 
-# In[54]:
+# In[101]:
 
 solver = uw.systems.Solver(stokesPIC)
 
@@ -953,7 +949,7 @@ if not cp.restart:
     solver.print_stats()
 
 
-# In[56]:
+# In[102]:
 
 #remove drift in pressure
 _pressure = surfint(pressureField)
@@ -964,7 +960,7 @@ pressureSurf = _pressure.evaluate()[0]
 pressureField.data[:] -= pressureSurf/surfLength
 
 
-# In[57]:
+# In[103]:
 
 #figVel= glucifer.Figure(quality=3, boundingBox= bBox)
 #figVel.append( glucifer.objects.Points(swarm, fn.math.dot(velocityField,velocityField), pointSize=1))
@@ -974,7 +970,7 @@ pressureField.data[:] -= pressureSurf/surfLength
 
 # ## Setup advection-diffusion, swarm advection
 
-# In[155]:
+# In[104]:
 
 advector = uw.systems.SwarmAdvector( swarm=swarm, velocityField=velocityField, order=2 )
 
@@ -994,7 +990,7 @@ if md.thermal:
 
 # ## Viz
 
-# In[156]:
+# In[105]:
 
 #Build a depth dependent mask for the vizualisation
 #This helps reduce the size of glucifer databases
@@ -1028,7 +1024,7 @@ if removeRandom:
     del nonzs, nstart, nend
 
 
-# In[157]:
+# In[106]:
 
 #Set up the gLucifer stores
 
@@ -1056,9 +1052,20 @@ fig2.append( glucifer.objects.VectorArrows(mesh, velocityField, arrowHead=1, sca
 
 # ## Update functions for main loop
 
-# In[158]:
+# In[107]:
 
-def main_update():
+def main_update(next_image_step):
+    
+    """
+    This includes some functionality for image / file writing at a specified frequency,
+    Assumes global variables:
+        time, step, files_freq, next_image_step
+    
+    if numerical dt exceeds next specified writing point
+    override dt make sure we hit that point
+    Set some flags so that image / file writing proceeds
+    
+    """
     
     
     if md.thermal:
@@ -1068,6 +1075,23 @@ def main_update():
     else:
         dt = advector.get_max_dt()
         
+    #This relates to file writing at set period:
+    #override dt make sure we hit certain time values
+    #Set some flags so that image / file writing proceeds
+    
+    if step == 0:
+        files_this_step = True
+    else:
+        files_this_step = False
+    
+    if time + dt >= next_image_step:
+        dt = next_image_step - time
+        files_this_step = True
+        next_image_step += files_freq #increment time for our next image / file dump
+        
+        
+    #Do advection    
+        
     advector.integrate(dt)
     marker.advection(dt)
     
@@ -1076,11 +1100,11 @@ def main_update():
     pressureField.data[:] -= pressureSurf/surfLength
     
     
-    return time+dt, step+1
+    return time+dt, step+1, files_this_step, next_image_step
     
 
 
-# In[159]:
+# In[108]:
 
 def viz_update():
     
@@ -1117,7 +1141,7 @@ def viz_update():
     
 
 
-# In[160]:
+# In[109]:
 
 def swarm_update():
     
@@ -1128,7 +1152,7 @@ def swarm_update():
     
 
 
-# In[161]:
+# In[110]:
 
 def markerLine_update():
     
@@ -1142,7 +1166,7 @@ def markerLine_update():
         
 
 
-# In[162]:
+# In[111]:
 
 def xdmfs_update():
     
@@ -1187,7 +1211,7 @@ def xdmfs_update():
 
 
 
-# In[163]:
+# In[112]:
 
 time = cp.time()  # Initial time
 step = cp.step()   # Initial timestep
@@ -1195,7 +1219,7 @@ steps_output = 5   # output every 10 timesteps
 metrics_output = 5
 files_output = 10
 
-files_freq  = md.filesMy*(3600.*365.*24.)/sf.time  #applies to files and gldbs
+files_freq  = md.filesFreqYears*(3600.*365.*24.)/sf.time  #applies to files and gldbs
 files_this_step = False
 next_image_step = (np.floor(time/files_freq)+ 1.) *files_freq 
 
@@ -1215,7 +1239,7 @@ while step < md.maxSteps:
     solver.solve(nonLinearIterate=True, nonLinearTolerance=md.nltol)
     
     # main
-    time,step = main_update()
+    time,step,files_this_step, next_image_step = main_update(next_image_step)
     
     #markers / markerLines
     if step % md.swarmUpdate == 0:
