@@ -6,8 +6,13 @@
 # This notebook develops a simple, flexible model for 2d subduction using Underworld2. All functionality is parallel-compatible. The code has been run on 48 processors, at a vertical resolution of 256 elements (Q1).
 # 
 # 
+# 
+# 
+# This code was written by Dan Sandiford, Louis Moresi and the Underworld Team. It is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/) . We offer this licence to encourage you to modify and share the examples and use them to help you in your research.
+# 
+# 
 # <hr>
-# <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a><br />This work is copyright Dan Sandiford and Louis Moresi. It is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+# <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />
 
 # ## Notes
 # 
@@ -31,7 +36,7 @@
 # 
 # ### Resolution and particles
 # 
-# Properly resolving the weak crust is critical to this model, which means that resolution (and particle numbers) need to be quite high (i.e. don't expect quick models on your laptop). The default crust thickness is 15 km. By switching the depth of the model to something like 660 km (upper mantle), you might get away with running at a resolution of ~ 72 processors. Note that the dyanmics are quite sensitive to the depth of the model. If you are looking to do more than just tinker, it will be worthwhile refining the mesh in the vertical direction. 
+# Properly resolving the weak crust is critical to this model, which means that resolution (and particle numbers) need to be quite high (i.e. don't expect quick models on your laptop). The default crust thickness is 15 km. By switching the depth of the model to something like 660 km (upper mantle), you might get away with running at a resolution of ~ 72 processors. Note that the dyanmics are quite sensitive to the depth of the model. 
 # 
 # 
 # ## nn_evaluation
@@ -65,7 +70,7 @@
 #     
 # ```
 
-# In[58]:
+# In[156]:
 
 import os
 import sys
@@ -78,7 +83,7 @@ else:
     pass #put your non-docker path here
 
 
-# In[59]:
+# In[157]:
 
 import numpy as np
 import underworld as uw
@@ -101,7 +106,7 @@ from unsupported_dan.utilities.misc import *
 
 # ## Setup output directories
 
-# In[60]:
+# In[158]:
 
 ###########
 #Standard output directory setup
@@ -160,7 +165,7 @@ uw.barrier() #Barrier here so no procs run the check in the next cell too early
 
 # ## Checkpointing
 
-# In[61]:
+# In[159]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -195,7 +200,7 @@ cp = checkpoint(outputPath + 'checkpoint/')
 # 
 # Command line arguments can only be provided to the `dp` and `md` dictionaries. The logic is that the scaling process (non-dimesionalisation) should basically be static, and simply provides a mapping between physical units and model units.
 
-# In[62]:
+# In[160]:
 
 dp = edict({})
 #Main physical paramters
@@ -284,7 +289,7 @@ md.filesFreqYears = 1.0e6 #dimensional time in years
 uw.barrier()
 
 
-# In[63]:
+# In[161]:
 
 ##Parse any command-line args
 
@@ -298,7 +303,7 @@ easy_args(sysArgs, md)
 uw.barrier()
 
 
-# In[64]:
+# In[162]:
 
 sf = edict({})
 
@@ -362,7 +367,7 @@ ndp.maxDepth = dp.maxDepth/sf.lengthScale
 ndp.radiusOfCurv = dp.radiusOfCurv/sf.lengthScale
 
 
-# In[65]:
+# In[163]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -392,7 +397,7 @@ cp.addDict(md, 'md')
 
 # ## Build Mesh and FE variables
 
-# In[66]:
+# In[209]:
 
 #Domain and Mesh paramters
 yres = int(md.res)
@@ -421,7 +426,42 @@ viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
     
 
 
-# In[67]:
+# Here we provide a basic mesh refinement strategy: This refinement function is:
+# 
+# $y_{new} = \frac{ln((\alpha y_n + e) -1)}{ln((\alpha + e) - 1)}$
+# 
+# where $y_n$ are the normalised original coordinates
+# 
+# Note that the horizonal mesh resolution has been set to balance this vertical refinement.
+
+# In[243]:
+
+mesh.reset()
+alpha = 5.
+am = mesh.minCoord[1]
+bm = mesh.maxCoord[1]
+
+yorigscaled = (mesh.data[:,1].copy()  - am) /(bm - am)
+ynew = (np.log(alpha*yorigscaled + np.e ) -1.)/(np.log(alpha+ np.e ) -1.)
+ynew *= (bm - am)
+ynew += am
+
+#do the mesh deformation
+with mesh.deform_mesh():
+    mesh.data[:,1] = ynew
+
+
+# In[ ]:
+
+
+
+
+# In[240]:
+
+
+
+
+# In[29]:
 
 #*************CHECKPOINT-BLOCK**************#
 cp.addObject(velocityField,'velocityField')
@@ -434,7 +474,7 @@ if md.thermal:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[68]:
+# In[30]:
 
 #print(cp.objDict.keys())
 
