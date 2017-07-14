@@ -18,7 +18,7 @@
 # 
 # ### General
 # 
-# Many of the functions and scripts (unsupported module) were written by Dan Sandiford during his PhD, and have minimal safeguards. When things break (they will), post and issue, and we'll try to provide a fix!
+# Many of the functions and scripts used here (various parts of the Underworld2 unsupported module) were written by Dan Sandiford during the bloodshed and mayhem of a PhD. This code has minimal safeguards. When things break (they will), post and issue, and we'll try to provide a fix!
 # 
 # ### Checkpointing
 # 
@@ -30,18 +30,28 @@
 # 
 # Currently a weak material is added to the top of the lower plate to decouple the plates. For simplicity, in this notebook, there is no functionality for updating the distribution of materials (i.e. creating new crust). An example of one way you could add this functionality can be found here: https://github.com/dansand/materialTransformations
 # 
+# 
 # ### Solver
 # 
 # We have found the penalty method works well for this problem. This is the default setting. (Unfortunately, it doesn't scale well to 3D.)
 # 
 # ### Resolution and particles
 # 
-# Properly resolving the weak crust is critical to this model, which means that resolution (and particle numbers) need to be quite high (i.e. don't expect quick models on your laptop). The default crust thickness is 15 km. By switching the depth of the model to something like 660 km (upper mantle), you might get away with running at a resolution of ~ 72 processors. Note that the dyanmics are quite sensitive to the depth of the model. 
+# Properly resolving the weak crust is critical to this model, which means that resolution (and particle numbers) need to be quite high (i.e. don't expect quick models on your laptop). The default crust thickness is 15 km. By switching the depth of the model to something like 660 km (upper mantle), you might get away with running at a resolution of ~ 96 elements (vertical). Note that the dyanamics are quite sensitive to the depth of the model. The default resolution and particle density are set low, essentially for model setup purposes. 
 # 
 # 
-# ## nn_evaluation
+# ### nearest neighbour evaluation
 # 
-# In a couple of places a function called nn_evaluation (nearest neighbour evaluation) is called. This is used whenever we want to map a swarm variable to a mesh variable.
+# In a couple of places a function `nn_evaluation` (nearest neighbour evaluation) is called. This is used whenever we want to map a swarm variable to a mesh variable. This is an alternative to the `uw.utils.MeshVariable_Projection` functionality provided in underworld2.
+# 
+# ### Visualisation
+# 
+# Examples of the both 'native' Underworld2 visualisation, through gLucifer, as well as xdmf file output are provided. 
+
+# In[ ]:
+
+
+
 
 # ## Package requirements
 # 
@@ -70,7 +80,7 @@
 #     
 # ```
 
-# In[156]:
+# In[46]:
 
 import os
 import sys
@@ -83,7 +93,7 @@ else:
     pass #put your non-docker path here
 
 
-# In[157]:
+# In[47]:
 
 import numpy as np
 import underworld as uw
@@ -106,7 +116,7 @@ from unsupported_dan.utilities.misc import *
 
 # ## Setup output directories
 
-# In[158]:
+# In[48]:
 
 ###########
 #Standard output directory setup
@@ -165,7 +175,7 @@ uw.barrier() #Barrier here so no procs run the check in the next cell too early
 
 # ## Checkpointing
 
-# In[159]:
+# In[49]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -177,7 +187,7 @@ cp = checkpoint(outputPath + 'checkpoint/')
 
 # ## Model parameters and scaling
 # 
-# The model is controlled by 4 dictionaries, 
+# Model versatility is controlled by 4 dictionaries, 
 # 
 # * 'dp': dimensional parameters
 # * 'md': model dictionary (changing numerics, switching certain processes on / off)
@@ -194,13 +204,13 @@ cp = checkpoint(outputPath + 'checkpoint/')
 # 
 # This approach was chosen so that:
 # 
-# 1. the non-dimensionalisation process is competely clear in each model
-# 2. parameters can be easy saved (dictionaries can be 'pickled')
+# 1. the non-dimensionalisation process is fully developed and explicit in each model
+# 2. parameters can be easy saved (dictionaries can be 'pickled', written to .csv etc)
 # 3. parameters can be easily altered through command line args. 
 # 
 # Command line arguments can only be provided to the `dp` and `md` dictionaries. The logic is that the scaling process (non-dimesionalisation) should basically be static, and simply provides a mapping between physical units and model units.
 
-# In[160]:
+# In[50]:
 
 dp = edict({})
 #Main physical paramters
@@ -219,7 +229,7 @@ dp.cohesionMantle=20e6                  #mantle cohesion in Byerlee law
 dp.cohesionCrust=1e6                    #crust cohesion in Byerlee law
 dp.frictionMantle=0.2                   #mantle friction coefficient in Byerlee law (tan(phi))
 dp.frictionCrust=0.02                   #crust friction coefficient 
-dp.diffusionPreExp=5.34e-10             #1./1.87e9, pre-exp factor for diffusion creep
+dp.diffusionPreExp=5.34e-10             #or 1./1.87e9, pre-exp factor for diffusion creep
 dp.diffusionEnergy=3e5 
 dp.diffusionVolume=5e-6
 dp.lowerMantlePreExp=4.23e-15           
@@ -273,7 +283,7 @@ md.swarmInitialFac = 0.6                #initial swarm layout will be int(md.ppc
 md.compBuoyancy = False
 md.nltol = 0.01
 md.maxSteps = 1000
-md.checkpointEvery = 50
+md.checkpointEvery = 100
 md.swarmUpdate = 10
 md.penaltyMethod = True
 md.opuniform = False
@@ -289,7 +299,7 @@ md.filesFreqYears = 1.0e6 #dimensional time in years
 uw.barrier()
 
 
-# In[161]:
+# In[51]:
 
 ##Parse any command-line args
 
@@ -303,7 +313,7 @@ easy_args(sysArgs, md)
 uw.barrier()
 
 
-# In[162]:
+# In[52]:
 
 sf = edict({})
 
@@ -367,7 +377,7 @@ ndp.maxDepth = dp.maxDepth/sf.lengthScale
 ndp.radiusOfCurv = dp.radiusOfCurv/sf.lengthScale
 
 
-# In[163]:
+# In[53]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -397,11 +407,11 @@ cp.addDict(md, 'md')
 
 # ## Build Mesh and FE variables
 
-# In[209]:
+# In[54]:
 
 #Domain and Mesh paramters
 yres = int(md.res)
-xres = int(md.res*12) 
+xres = int(md.res*8) 
 
 
 
@@ -434,7 +444,7 @@ viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
 # 
 # Note that the horizonal mesh resolution has been set to balance this vertical refinement.
 
-# In[243]:
+# In[55]:
 
 mesh.reset()
 alpha = 5.
@@ -451,17 +461,20 @@ with mesh.deform_mesh():
     mesh.data[:,1] = ynew
 
 
+# In[57]:
+
+#figMesh= glucifer.Figure(quality=3)
+#figMesh.append( glucifer.objects.Mesh(mesh))
+#figMesh.show()
+#figMesh.save_database('test.gldb')
+
+
 # In[ ]:
 
 
 
 
-# In[240]:
-
-
-
-
-# In[29]:
+# In[42]:
 
 #*************CHECKPOINT-BLOCK**************#
 cp.addObject(velocityField,'velocityField')
@@ -474,12 +487,12 @@ if md.thermal:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[30]:
+# In[43]:
 
 #print(cp.objDict.keys())
 
 
-# In[69]:
+# In[44]:
 
 #*************CHECKPOINT-BLOCK**************#
 
@@ -493,7 +506,7 @@ if cp.restart:
 #*************CHECKPOINT-BLOCK**************#
 
 
-# In[70]:
+# In[45]:
 
 #miscellaneous Uw functions functions
 
@@ -835,9 +848,12 @@ else:
 
 # ## adiabatic temp correction
 
-# In[92]:
+# In[1]:
 
 #Adiabatic correction: this is added to the arrhenius laws to simulate the adiabatic component
+#note that this applies everywhere the heating that a parcel at the surface at the potential temp. would experience
+
+
 adiabaticCorrectFn =  ndp.potentialTemp*fn.math.exp(ndp.dissipation*depthFn) - ndp.potentialTemp
 
 
